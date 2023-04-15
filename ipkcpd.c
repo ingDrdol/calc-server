@@ -26,7 +26,6 @@
 
 #define DEBUG
 #define BUF_LEN 255
-#define OPERATOR_POZ 1
 
 #define ERR_MSG(x) loc_error_msg[x*(-1) - 1]
 
@@ -82,24 +81,18 @@ funcvar select_op(char operator){
 double get_result(const char *prefix_eq){
     double (*operation)(double, double);
     double first_exp = prefix_eq[3] - 48, second_exp = prefix_eq[5] - 48; 
-    if(prefix_eq[0] != '('){
-        errno = ERR_OPENB;
-        return 0;
-    }
-    operation = select_op(prefix_eq[OPERATOR_POZ]);
-    fprintf(stderr, "%c, %lf, %lf\n", prefix_eq[OPERATOR_POZ], first_exp, second_exp);
+    operation = select_op(prefix_eq[0]);
+    fprintf(stderr, "%c, %lf, %lf\n", prefix_eq[0], first_exp, second_exp);
     return operation(first_exp, second_exp);
 
 }
 
-int main(int argc, char **argv){
+int main(void){
     errno = 0;
-    char buffer[BUF_LEN];
     double result;
-#ifdef DEBUG
-        result = get_result("(* 2 5)");
-        printf("%lf\n", result);
-#else
-#endif
+
+    result = get_result("(* 2 5)");
+    printf("%lf\n", result);
+
     return 0;
 }
