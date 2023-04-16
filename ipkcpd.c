@@ -28,6 +28,7 @@
 #define UDP_MODE 0
 #define TCP_MODE 1
 #define BUF_LEN 255
+#define COMM_LEN 10
 #define OP_POZ 1
 #define EXPR_OFFSET 3*sizeof(char)
 #define SP_OFFSET(x) x*sizeof(char)
@@ -49,7 +50,7 @@ typedef double (*funcvar)(double, double);
 extern int errno; 
 int port_num, mode, sock_type, ssocket, wsocket, csocket;
 char host_name[MAX_HOST_NAME_LEN];
-pid_t is_child;
+pid_t is_child = 1;
 
 double add(double x, double y){
     return x + y;
@@ -152,9 +153,12 @@ double get_result(const char *prefix_eq, char *rest){
  * Availibility: https://www.geeksforgeeks.org/signals-c-language/
  ********************************************************************/ 
  ///////////////////////////////////////////////////////////////////////////
-void handle_sigint(){                                                     
-  if(is_child)  
-    close(wsocket);                                       
+void handle_sigint(){  
+  const char *buff = "BYE\n";                                                  
+  if(is_child){  
+    fprintf(stderr, "closing wsocket\n");
+    close(wsocket);
+  }                                       
   else{
     send(csocket, buff, strlen(buff), 0);
     if (errno != 0){
@@ -227,7 +231,7 @@ void load_arguments(int argc, char **argv){
 
 void udp_server(){
   char rest[BUF_LEN];
-  char buf[BUF_LEN];
+  char buff[BUF_LEN];
   double result;
   socklen_t clientlen;
   struct sockaddr_in server_address, client_address;
@@ -262,36 +266,36 @@ void udp_server(){
     while(1) 
     {   
         clientlen = sizeof(client_address);
-        recvfrom(ssocket, buf, BUF_LEN, 0, (struct sockaddr *) &client_address, &clientlen);
+        recvfrom(ssocket, buff, BUF_LEN, 0, (struct sockaddr *) &client_address, &clientlen);
         if (errno != 0){
           fprintf(stderr, "%s\n", strerror(errno));
           exit(errno);
         }
 
-        if(OPCODE(buf) == 0){
-          result = get_result(buf + REQ_OFFSET, rest);
+        if(OPCODE(buff) == 0){
+          result = get_result(buff + REQ_OFFSET, rest);
           if(errno == 0){
-            OPCODE(buf) = 1;
-            RES_STATUS(buf) = 0;
-            sprintf(buf + RES_OFFSET, "%lf%c", result, '\0');
-            RES_LEN(buf) = strlen(buf + RES_OFFSET);
+            OPCODE(buff) = 1;
+            RES_STATUS(buff) = 0;
+            sprintf(buff + RES_OFFSET, "%lf%c", result, '\0');
+            RES_LEN(buff) = strlen(buff + RES_OFFSET);
           }
           else{
-            OPCODE(buf) = 1;
-            RES_STATUS(buf) = 1;
-            sprintf(buf + RES_OFFSET, "%s%c", ERR_MSG(errno), '\0');
-            RES_LEN(buf) = strlen(buf + RES_OFFSET);
+            OPCODE(buff) = 1;
+            RES_STATUS(buff) = 1;
+            sprintf(buff + RES_OFFSET, "%s%c", ERR_MSG(errno), '\0');
+            RES_LEN(buff) = strlen(buff + RES_OFFSET);
             errno = 0;
           }
           
         }
         else{
-          OPCODE(buf) = 1;
-          RES_STATUS(buf) = 1;
-          sprintf(buf + RES_OFFSET, "Wrong opcode%c", '\0');
+          OPCODE(buff) = 1;
+          RES_STATUS(buff) = 1;
+          sprintf(buff + RES_OFFSET, "Wrong opcode%c", '\0');
         }
 
-        sendto(ssocket, buf, strlen(buf + RES_OFFSET) + RES_OFFSET, 0, (struct sockaddr *) &client_address, clientlen);
+        sendto(ssocket, buff, strlen(buff + RES_OFFSET) + RES_OFFSET, 0, (struct sockaddr *) &client_address, clientlen);
         if (errno != 0){
           fprintf(stderr, "%s\n", strerror(errno));
           exit(errno);
@@ -301,6 +305,10 @@ void udp_server(){
 
 void tcp_child(){
   char buff[BUF_LEN];
+  char comm[COMM_LEN];
+  char rest[BUF_LEN];
+  double result;
+  int load;
 
   recv(csocket, buff, BUF_LEN, 0);
   if (errno != 0){
@@ -308,12 +316,50 @@ void tcp_child(){
     exit(errno);
   }
   
-  strcpy(buff, "BYE\n");
-  
+  if(strcmp(buff, "HELLO\n") != 0){
+    strcpy(buff, "BYE\n");
+    send(csocket, buff, strlen(buff), 0);
+    if (errno != 0){
+      fprintf(stderr, "%s\n", strerror(errno));
+      exit(errno);
+    }
+  }
+
+  strcpy(buff, "HELLO\n");
+
   send(csocket, buff, strlen(buff), 0);
   if (errno != 0){
     fprintf(stderr, "%s\n", strerror(errno));
     exit(errno);
+  }
+  
+  while(strcmp(buff, "BYE\n") != 0){
+    recv(csocket, buff, BUF_LEN, 0);
+    if (errno != 0){
+      fprintf(stderr, "%s\n", strerror(errno));
+      exit(errno);
+    }
+    fprintf(stderr, "%s", buff);
+    load = sscanf(buff, "%s %[^\n]", comm, buff);
+    fprintf(stderr, "rest: %s\n", buff);
+    if(load == 2 && strcmp(comm, "SOLVE") == 0){  
+      result = get_result(buff, rest);
+      if(errno == 0)
+        sprintf(buff, "RESULT %lf\n", result);
+      else{
+        strcpy(buff, "BYE\n");
+        errno = 0;
+      }
+    }
+    else{
+      strcpy(buff, "BYE\n");
+    }
+    
+    send(csocket, buff, strlen(buff), 0);
+    if (errno != 0){
+      fprintf(stderr, "%s\n", strerror(errno));
+      exit(errno);
+    }
   }
   close(csocket);
   exit(0);
@@ -361,7 +407,9 @@ void tcp_welcome(){
       fprintf(stderr, "%s\n", strerror(errno));
       exit(errno);
     }
-    tcp_child();
+    is_child = fork();
+    if(!is_child)
+      tcp_child();
 	}	
 }
 
