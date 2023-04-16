@@ -47,8 +47,9 @@
 
 typedef double (*funcvar)(double, double);
 extern int errno; 
-int port_num, mode, sock_type, ssocket, wsocket;
+int port_num, mode, sock_type, ssocket, wsocket, csocket;
 char host_name[MAX_HOST_NAME_LEN];
+pid_t is_child;
 
 double add(double x, double y){
     return x + y;
@@ -151,20 +152,20 @@ double get_result(const char *prefix_eq, char *rest){
  * Availibility: https://www.geeksforgeeks.org/signals-c-language/
  ********************************************************************/ 
  ///////////////////////////////////////////////////////////////////////////
-void handle_sigint(){                                                    //
-    int chars;							   	                                         //
-    char buffer[BUF_LEN];					   	                                   //
-    strcpy(buffer, "BYE\n");					   	                               //
-    printf( "%s", buffer);   						                                 //
-    								  	                                                 //
-    while((chars = send(ssocket, buffer, strlen(buffer),0)) < 0);        // 
-    									                                                   //
-    chars = recv(ssocket, buffer, BUF_LEN, 0);	  		                   //
-    buffer[chars] = '\0';						                                     //
-    printf( "%s", buffer); 				                                       //
-    close(ssocket);                                                      //
-    exit(2);                                                       	     //
-}                                                                  	     //
+void handle_sigint(){                                                     
+  if(is_child)  
+    close(wsocket);                                       
+  else{
+    send(csocket, buff, strlen(buff), 0);
+    if (errno != 0){
+      fprintf(stderr, "%s\n", strerror(errno));
+      exit(errno);
+    }
+    close(csocket);
+  }
+    
+  exit(2);
+}
  ////////////////////^^zpracovani signalu 2 'SIGINT'^^//////////////////////
 
 void load_arguments(int argc, char **argv){
@@ -298,6 +299,72 @@ void udp_server(){
     }
 }
 
+void tcp_child(){
+  char buff[BUF_LEN];
+
+  recv(csocket, buff, BUF_LEN, 0);
+  if (errno != 0){
+    fprintf(stderr, "%s\n", strerror(errno));
+    exit(errno);
+  }
+  
+  strcpy(buff, "BYE\n");
+  
+  send(csocket, buff, strlen(buff), 0);
+  if (errno != 0){
+    fprintf(stderr, "%s\n", strerror(errno));
+    exit(errno);
+  }
+  close(csocket);
+  exit(0);
+}
+
+void tcp_welcome(){
+	struct sockaddr_in sa;
+	struct sockaddr_in sa_client;
+  socklen_t sa_client_len=sizeof(sa_client);
+  struct hostent *server;
+	
+  wsocket = socket(AF_INET, SOCK_STREAM, 0);
+	if (errno != 0){
+    fprintf(stderr, "%s\n", strerror(errno));
+    exit(errno);
+  }
+
+	if ((server = gethostbyname(host_name)) == NULL) {
+        fprintf(stderr,"ERROR: unknown hostname '%s'\n", host_name);
+        exit(1);
+  }
+
+	bzero((char *) &sa, sizeof(sa));
+  sa.sin_family = AF_INET;
+  bcopy((char *)server->h_addr_list[0], (char *)&sa.sin_addr.s_addr, server->h_length);
+  sa.sin_port = htons((unsigned short)port_num);
+    
+    
+	bind(wsocket, (struct sockaddr*)&sa, sizeof(sa));
+	if (errno != 0){
+    fprintf(stderr, "%s\n", strerror(errno));
+    exit(errno);
+  }
+
+	listen(wsocket, MAX_TCP_CLIENTS);
+	if (errno != 0){
+    fprintf(stderr, "%s\n", strerror(errno));
+    exit(errno);
+  }
+
+	while(1)
+	{
+		csocket = accept(wsocket, (struct sockaddr*)&sa_client, &sa_client_len);		
+		if (errno != 0){
+      fprintf(stderr, "%s\n", strerror(errno));
+      exit(errno);
+    }
+    tcp_child();
+	}	
+}
+
 int main(int argc, char **argv){
   errno = 0;
   port_num = 0;
@@ -316,7 +383,6 @@ int main(int argc, char **argv){
   if(mode == UDP_MODE)
     udp_server();
   if(mode == TCP_MODE)
-    fprintf(stderr, "Not supported yet\n");  
-  
+    tcp_welcome();  
   return 0;
 }
