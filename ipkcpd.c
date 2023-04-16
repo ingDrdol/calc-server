@@ -25,15 +25,30 @@
 #include "loc_errors.h"
 
 #define DEBUG
+#define UDP_MODE 0
+#define TCP_MODE 1
 #define BUF_LEN 255
 #define OP_POZ 1
 #define EXPR_OFFSET 3*sizeof(char)
 #define SP_OFFSET(x) x*sizeof(char)
+#define MAX_HOST_NAME_LEN 255
+#define ARG_NUM 6
+#define WELL_KNOWN_PORTS 1023 //number of well known ports
+#define MAX_PORT_NUM 65353 //max port number for tcp/udp protocols
+#define REQ_OFFSET 2
+#define RES_OFFSET 3
+#define MAX_TCP_CLIENTS 5
 
+#define OPCODE(msg) msg[0]
+#define REQ_LEN(msg) msg[1]
+#define RES_LEN(msg) msg[2]
+#define RES_STATUS(msg) msg[1]
 #define ERR_MSG(x) loc_error_msg[x*(-1) - 1]
 
 typedef double (*funcvar)(double, double);
 extern int errno; 
+int port_num, mode, sock_type, ssocket, wsocket;
+char host_name[MAX_HOST_NAME_LEN];
 
 double add(double x, double y){
     return x + y;
@@ -94,14 +109,14 @@ double get_result(const char *prefix_eq, char *rest){
         return -1;
     }
 
-///////////////////////////////////////////////////////////////////////////////////
+ ///////////////////////////////////////////////////////////////////////////////////
     read_check = sscanf(prefix_eq + EXPR_OFFSET, "%lf %[^'\n']", &first_exp, rest);
     if(read_check != 2)
         first_exp = get_result(prefix_eq + EXPR_OFFSET, rest);
     if(errno != 0)
         return -1;
-/////////////////////////////////^^first value^^///////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////
+ /////////////////////////////////^^first value^^///////////////////////////////////
+ /////////////////////////////////////////////////////////////////////////////////////
     read_check = sscanf(rest, " %lf%[^\n]", &second_exp, rest);
     if(read_check == 1){
         errno = ERR_CLOSB;
@@ -119,27 +134,189 @@ double get_result(const char *prefix_eq, char *rest){
     }
     if(errno != 0)
         return -1;  
-////////////////////////////////^^second value^^/////////////////////////////////////
-    printf("%s\n", rest);
+ ////////////////////////////////^^second value^^/////////////////////////////////////
     read_check = sscanf(rest, "%c%[^\n]", &close, rest);
     if(close != ')'){
         errno = ERR_CLOSB;
         return -1;
     }
-    printf("%s, %c\n", rest, close);
     return operation(first_exp, second_exp);
 
 }
 
-int main(void){
-    errno = 0;
-    char rest[BUF_LEN];
-    const char *test_string = {"(* (+ 1 (+ 1 1)) (- 10 (/ 10 2)"};
-    double result;
-    result = get_result(test_string, &rest[0]);
-    if(errno != 0)
-        fprintf(stderr, "%s\n", ERR_MSG(errno));
-    else
-        printf("%lf\n", result);
-    return 0;
+/*********************************************************************
+ * Title: Example of sigint handler
+ * Author: Kadam Patel
+ * Date: 08. 02. 2018
+ * Availibility: https://www.geeksforgeeks.org/signals-c-language/
+ ********************************************************************/ 
+ ///////////////////////////////////////////////////////////////////////////
+void handle_sigint(){                                                    //
+    int chars;							   	                                         //
+    char buffer[BUF_LEN];					   	                                   //
+    strcpy(buffer, "BYE\n");					   	                               //
+    printf( "%s", buffer);   						                                 //
+    								  	                                                 //
+    while((chars = send(ssocket, buffer, strlen(buffer),0)) < 0);        // 
+    									                                                   //
+    chars = recv(ssocket, buffer, BUF_LEN, 0);	  		                   //
+    buffer[chars] = '\0';						                                     //
+    printf( "%s", buffer); 				                                       //
+    close(ssocket);                                                      //
+    exit(2);                                                       	     //
+}                                                                  	     //
+ ////////////////////^^zpracovani signalu 2 'SIGINT'^^//////////////////////
+
+void load_arguments(int argc, char **argv){
+  int c;
+    while ((c = getopt(argc, argv, "h:p:m:")) != -1){
+    switch (c)
+      {
+      case 'h':
+        strcpy(host_name, optarg);
+        break;
+      case 'p':
+        port_num = atoi(optarg);
+        //////////////////////////////////////////////////////////////////////////////////////////////
+        if(port_num <= WELL_KNOWN_PORTS || port_num >= MAX_PORT_NUM){
+          fprintf(stderr, "ERROR: invalid port number '%d' must be within <1024, 65_353>\n", port_num);
+          exit(1);
+        }
+        ////////////////////////////////^^kontrola cisla portu^^///////////////////////////////////////
+        break;
+      case 'm':
+        if(!strcmp(optarg, "udp")){
+          mode = UDP_MODE;
+          sock_type = SOCK_DGRAM;
+        }
+        else if(!strcmp(optarg, "tcp")){
+          signal(SIGINT, handle_sigint);
+          mode = TCP_MODE;
+          sock_type = SOCK_STREAM;
+        }
+        else{
+        /////////////////////////////////////////////////////////////////////////////////
+          fprintf(stderr, "ERROR: unknown mode expected [udp tcp] given %s\n", optarg);
+          exit(1);
+        ////////////////////////////^^neznamy protokol^^//////////////////////////////////
+        }
+        break;
+      case '?':
+	///////////////////////////////////////////////////////////////////////
+        if (optopt == 'h')
+          fprintf (stderr, "Option -%c requires a hostname.\n", optopt);
+        else if (optopt == 'p')
+          fprintf (stderr, "Option -%c requires a port number.\n", optopt);
+        else if (optopt == 'm')
+          fprintf (stderr, "Option -%c requires a mode.\n", optopt);
+        else if (isprint (optopt))
+          fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+        else
+          fprintf (stderr, "Unknown option character `\\x%x'.\n", optopt);       
+       // print_help();
+        exit(1);
+        break;
+      default:
+    //    print_help();
+        exit(1);
+        //////////////////^^neznamy, ci nevalidni prepinac^^///////////////////
+      }
+    } //end while
+}
+
+void udp_server(){
+  char rest[BUF_LEN];
+  char buf[BUF_LEN];
+  double result;
+  socklen_t clientlen;
+  struct sockaddr_in server_address, client_address;
+  struct hostent *server;
+  int optval = 1;
+
+  ssocket = socket(AF_INET, SOCK_DGRAM, 0);
+  if (errno != 0){
+    fprintf(stderr, "%s\n", strerror(errno));
+    exit(errno);
+  }
+
+    setsockopt(ssocket, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval , sizeof(int));
+
+  if ((server = gethostbyname(host_name)) == NULL) {
+        fprintf(stderr,"ERROR: unknown hostname '%s'\n", host_name);
+        exit(1);
+  }
+
+  bzero((char *) &server_address, sizeof(server_address));
+  server_address.sin_family = AF_INET;
+  bcopy((char *)server->h_addr_list[0], (char *)&server_address.sin_addr.s_addr, server->h_length);
+  server_address.sin_port = htons((unsigned short)port_num);
+	
+  bind(ssocket, (struct sockaddr *) &server_address, sizeof(server_address)) ;
+  
+  if (errno != 0){
+    fprintf(stderr, "%s\n", strerror(errno));
+    exit(errno);
+  }
+    
+    while(1) 
+    {   
+        clientlen = sizeof(client_address);
+        recvfrom(ssocket, buf, BUF_LEN, 0, (struct sockaddr *) &client_address, &clientlen);
+        if (errno != 0){
+          fprintf(stderr, "%s\n", strerror(errno));
+          exit(errno);
+        }
+
+        if(OPCODE(buf) == 0){
+          result = get_result(buf + REQ_OFFSET, rest);
+          if(errno == 0){
+            OPCODE(buf) = 1;
+            RES_STATUS(buf) = 0;
+            sprintf(buf + RES_OFFSET, "%lf%c", result, '\0');
+            RES_LEN(buf) = strlen(buf + RES_OFFSET);
+          }
+          else{
+            OPCODE(buf) = 1;
+            RES_STATUS(buf) = 1;
+            sprintf(buf + RES_OFFSET, "%s%c", ERR_MSG(errno), '\0');
+            RES_LEN(buf) = strlen(buf + RES_OFFSET);
+            errno = 0;
+          }
+          
+        }
+        else{
+          OPCODE(buf) = 1;
+          RES_STATUS(buf) = 1;
+          sprintf(buf + RES_OFFSET, "Wrong opcode%c", '\0');
+        }
+
+        sendto(ssocket, buf, strlen(buf + RES_OFFSET) + RES_OFFSET, 0, (struct sockaddr *) &client_address, clientlen);
+        if (errno != 0){
+          fprintf(stderr, "%s\n", strerror(errno));
+          exit(errno);
+        }
+    }
+}
+
+int main(int argc, char **argv){
+  errno = 0;
+  port_num = 0;
+  mode = -1;
+  sock_type = SOCK_DGRAM;
+
+  //////////////////////////////////////
+  if(argc != (ARG_NUM + 1)){
+    //print_help();
+    return 1;
+  }
+  ////^^kontrola poctu argumentu^^//////
+
+  load_arguments(argc, argv);
+
+  if(mode == UDP_MODE)
+    udp_server();
+  if(mode == TCP_MODE)
+    fprintf(stderr, "Not supported yet\n");  
+  
+  return 0;
 }

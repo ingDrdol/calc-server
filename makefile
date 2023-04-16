@@ -4,7 +4,7 @@ CFLAGS=-std=c99 -Wall -Wextra -pedantic -lm -fcommon
 
 all: ipkcpd
 
-ipkcpc: ipkcpc.c loc_errors.h
+ipkcpd: ipkcpd.c loc_errors.h
 	$(CC) $(CFLAGS) -o ipkcpd ipkcpd.c 
 
 clean:
