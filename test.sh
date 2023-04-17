@@ -7,7 +7,7 @@ function echo_fail(){
 function echo_pass(){
 	echo -e "                              [\033[1;32mPass\033[1;0m]"
 }
-binfile='./ipkcpd';
+binfile='./testbin/ipkcpc';
 host='localhost';
 portudp='2025';
 porttcp='2026';
@@ -22,7 +22,7 @@ function testudp(){ # $1 - name $2 - description
 	then
 		echo_pass;
 	else
-		cat `echo "testfiles/$1.in"` | `echo "$binfile -h $host -p $portudp -m udp"`;
+		echo "$wcount"
 		echo_fail;
 	fi
 }
@@ -36,7 +36,7 @@ function testtcp(){ # $1 - name $2 - description
 	then
 		echo_pass;
 	else
-		cat `echo "testfiles/$1.in"` | `echo "$binfile -h $host -p $porttcp -m tcp"`;
+		echo "$wcount"
 		echo_fail;
 	fi
 }
@@ -54,10 +54,10 @@ echo "===================================";
 echo "";
 echo "Testing TCP:";
 echo "===================================";
-testtcp udp_add "adding two numbers";
-testtcp udp_sub "subtracting two numbers";
-testtcp udp_mul "multiplying two numbers";
-testtcp udp_div "division with two numbers";
-testtcp udp_complex "more complex expression";
-testtcp udp_div_by_zero "division with zero as second argument";
+testtcp tcp_add "adding two numbers";
+testtcp tcp_sub "subtracting two numbers";
+testtcp tcp_mul "multiplying two numbers";
+testtcp tcp_div "division with two numbers";
+testtcp tcp_complex "more complex expression";
+testtcp tcp_div_by_zero "division with zero as second argument";
 echo "===================================";
