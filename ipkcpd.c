@@ -155,8 +155,7 @@ double get_result(const char *prefix_eq, char *rest){
  ///////////////////////////////////////////////////////////////////////////
 void handle_sigint(){  
   const char *buff = "BYE\n";                                                  
-  if(is_child){  
-    fprintf(stderr, "closing wsocket\n");
+  if(is_child){
     close(wsocket);
   }                                       
   else{
@@ -172,6 +171,11 @@ void handle_sigint(){
 }
  ////////////////////^^zpracovani signalu 2 'SIGINT'^^//////////////////////
 
+/******************************************************************************************
+ * Title: Example of getopt()
+ * Author: unknown
+ * Availability: https://www.gnu.org/software/libc/manual/html_node/Example-of-Getopt.html
+ *****************************************************************************************/
 void load_arguments(int argc, char **argv){
   int c;
     while ((c = getopt(argc, argv, "h:p:m:")) != -1){
@@ -229,6 +233,11 @@ void load_arguments(int argc, char **argv){
     } //end while
 }
 
+/*********************************************************************************************************
+ * Title: Demonstration of trivial UDP communication
+ * Author: Ondrej Rysavy (rysavy@fit.vutbr.cz)
+ * Availability: https://git.fit.vutbr.cz/NESFIT/IPK-Projekty/src/branch/master/Stubs/cpp/DemoUdp/server.c
+ ********************************************************************************************************/
 void udp_server(){
   char rest[BUF_LEN];
   char buff[BUF_LEN];
@@ -339,9 +348,7 @@ void tcp_child(){
       fprintf(stderr, "%s\n", strerror(errno));
       exit(errno);
     }
-    fprintf(stderr, "%s", buff);
     load = sscanf(buff, "%s %[^\n]", comm, buff);
-    fprintf(stderr, "rest: %s\n", buff);
     if(load == 2 && strcmp(comm, "SOLVE") == 0){  
       result = get_result(buff, rest);
       if(errno == 0)
@@ -365,6 +372,11 @@ void tcp_child(){
   exit(0);
 }
 
+/*********************************************************************************************************
+ * Title: Demonstration of trivial UDP communication
+ * Author: Ondrej Rysavy (rysavy@fit.vutbr.cz)
+ * Availability: https://git.fit.vutbr.cz/NESFIT/IPK-Projekty/src/branch/master/Stubs/cpp/DemoTcp/server.c
+ ********************************************************************************************************/
 void tcp_welcome(){
 	struct sockaddr_in sa;
 	struct sockaddr_in sa_client;
