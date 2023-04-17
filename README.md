@@ -41,3 +41,44 @@ When `SIGINT` signal is recieved program closes welcome socket and exits with va
 
 "RESULT [[:digit:]]" - is send as a response
 ```
+
+## Testing
+
+1. Clone the repository
+
+```
+git clone https://git.fit.vutbr.cz/xkocma09/IPK_projekt2.git
+```
+
+2. Make the project using `make`
+3. Run ipkcpd on background
+
+```
+./ipkcpd -h localhost -p 2025 -m udp & ./ipkcpd -h localhost -p 2026 -m tcp &
+```
+
+4. Change mode of the skript and run it
+
+```
+chmod +x test.sh
+./test.sh
+```
+
+5. See the result
+6. Get pid of the server processes and send them SIGINT
+
+```
+ps 
+...
+123 ipkcpd pts/0 
+124 ipkcpd pts/0 
+...
+kill -2 123
+kill -2 124
+```
+
+## References
+Ryšavý, Ondřej, Ph. D. “IPK-DemoUdp.” *FIT - VUT Brno - Git*, git.fit.vutbr.cz/NESFIT/IPK-Projekty/src/branch/master/Stubs/cpp/DemoUdp/server.c.<br>
+Ryšavý, Ondřej, Ph. D. “IPK-DemoTcp.” *FIT - VUT Brno - Git*, git.fit.vutbr.cz/NESFIT/IPK-Projekty/src/branch/master/Stubs/cpp/DemoTcp/server.c.<br>
+Kadam Patel. “Signals in C Language.” *GeeksforGeeks*, 8 Feb. 2018, www.geeksforgeeks.org/signals-c-language<br>
+www.gnu.org/software/libc/manual/html_node/Example-of-Getopt.html
